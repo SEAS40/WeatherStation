@@ -1,0 +1,44 @@
+// the setup function runs once when you press reset or power the board
+
+// input variable in bytes (0 - 255)
+byte receiveByte = 0;
+
+
+
+void setup() 
+{
+  // initialize digital pin LED_BUILTIN as an output.
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.begin(230400);
+  delay(4500);
+  digitalWrite(LED_BUILTIN, HIGH);
+  Serial.println("The LED is off. Press B to turn it on and L to turn it off -->");  
+}
+
+
+
+// the loop function runs over and over again forever
+void loop() 
+{
+
+  if(Serial.available()>0)
+    {
+    receiveByte=Serial.read();
+      if(receiveByte==66){ //98 is the ASCII code for B
+      digitalWrite(LED_BUILTIN, LOW);
+//      Serial.println(receiveByte);
+      Serial.println("LED is turned ON");
+      }
+      else if(receiveByte==76){ //76 is the ASCII code for L
+      digitalWrite(LED_BUILTIN, HIGH);
+//      Serial.println(receiveByte);
+      Serial.println("LED is turned OFF");
+      }
+      else{
+      Serial.println("Invalid command...try again");                // wait for a second
+        }    
+    }
+
+
+}
