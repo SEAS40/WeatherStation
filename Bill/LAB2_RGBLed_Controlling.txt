@@ -1,0 +1,63 @@
+int redpin   = D1;
+int greenpin = D2;
+int bluepin  = D3;
+int var;
+byte receiveByte = 0;
+
+void setup() {
+  // put your setup code here, to run once:
+  pinMode(redpin,OUTPUT);
+  pinMode(bluepin,OUTPUT);
+  pinMode(greenpin,OUTPUT);
+  Serial.begin(9600);
+  delay(1000);
+  digitalWrite(LED_BUILTIN, LOW);
+  Serial.println("The LED is off. Press B to turn it on and L to turn it off -->");
+
+}
+
+void loop() {
+
+// Reads the input in Bytes
+if(Serial.available()>0){
+      receiveByte=Serial.read();
+
+      if(receiveByte==66){ //98 is the ASCII code for B
+        
+        digitalWrite(LED_BUILTIN, LOW);
+        //Serial.println(receiveByte);
+        Serial.println("LED is turned ON");  
+        var=0;
+        while(var<3){
+          for (int i=0;i<256;i++){
+            analogWrite(redpin,i);
+            analogWrite(greenpin,i);
+            delay(10);
+          }
+          
+          digitalWrite(greenpin,LOW);
+          digitalWrite(redpin,LOW);
+          
+          for (int i=255;i>0;i--){
+            analogWrite(bluepin,i);
+            delay(10);
+          }
+          var++;
+         }
+      digitalWrite(greenpin,HIGH);
+      Serial.println("Green LED is ON");   
+      }
+      else if(receiveByte==76){ //76 is the ASCII code for L
+        
+          digitalWrite(greenpin,LOW);
+          digitalWrite(redpin,LOW);
+          digitalWrite(bluepin,LOW);
+          Serial.println("LED is turned OFF");
+      } 
+      else{
+        Serial.println("Invalid command...try again");                // wait for a second
+      } 
+    }
+
+
+}
