@@ -1,0 +1,20 @@
+int pin_mq= D1;
+
+void setup() {
+  // put your setup code here, to run once:
+
+  Serial.begin(9600);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  int adc_MQ=analogRead(A0);
+  float voltage= adc_MQ*(5.0/1023.0);
+
+  Serial.print("RAW ADC reading:");
+  Serial.print (adc_MQ);
+
+  Serial.print ("Voltage:");
+  Serial.println(voltage);
+  delay(1000);
+}
