@@ -23,7 +23,7 @@ int ult=50; //upper limit temperature
 
 //Sensor Parameters. DATASHEET? 
 #define RT0 10000 //Ohm
-#define T0 65 //Celsius. Nominal temperature. Calibrated based on RH sensor
+#define T0 66.3 //Celsius. Nominal temperature. Calibrated based on RH sensor
 #define BCOEFFICIENT 3950 // B coefficient. 
 
 //DEFINITIONS
