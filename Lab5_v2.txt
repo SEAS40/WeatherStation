@@ -1,0 +1,70 @@
+//SPDX-License-Identifier: GLP-3.0
+pragma solidity >=0.5.0 <0.8.0; //EXERCISE 1
+
+contract Factory { 
+    uint idDigits=16; //EXERCISE 2
+    uint idModulus=10**idDigits; //EXERCISE 3
+
+    struct Product { //EXERCISE 4
+        string name;
+        uint id;
+    }
+
+    Product[] public products; //EXERCISE 5
+
+    function _createProduct(string memory _name, uint _id) private { //EXERCISE 6
+        products.push(Product(_name,_id)); 
+        uint productId= (products.length - 1);
+        emit NewProduct(productId,_name,_id); 
+        _Ownership (productId);  
+    }
+
+    function _generateRandomId(string memory _str) private view returns(uint) { // EXERCISE 7
+        uint rand=uint(keccak256(abi.encodePacked(_str))); //EXERCISE 8 
+        return (rand%idModulus);
+    } 
+
+    function createRandomProduct(string memory _name, uint _age) public { 
+        uint randId=_generateRandomId(_name);
+        _createProduct(_name, randId);
+        age[randId] = _age;
+        validationUsers(randId);  
+    } 
+
+    event NewProduct (uint ArrayProductId, string name, uint id); //EXERCISE 9
+
+    mapping (uint => address) public productToOwner; // EXERCISE 10
+    mapping (address => uint) public ownerProductCount;
+
+   function _Ownership (uint _productId) private { //EXERCISE 11
+        productToOwner[_productId] = msg.sender;
+        ownerProductCount[msg.sender]++;
+    }
+
+    function getProductsByOwner (address _owner) external view returns(uint[] memory) { //EXERCISE 12
+        uint counter=0;
+        uint[] memory result= new uint[](ownerProductCount[_owner]);
+        for (uint i=0; i<products.length; i++) {
+            if (productToOwner[i]==_owner) {
+                result[counter]=i;
+                counter++;
+            }
+        }
+        return result;              
+    }
+
+    //EXERCISE 13 - Check OpenZeppelin
+
+    mapping (uint => uint) public age; //EXERCISE 14
+
+    modifier olderThan (uint _age, uint _userId) {
+        require (age[_userId] >= _age, "UNDERAGE");
+        _;
+    }
+
+    //function validationUsers (uint _userId) public view olderThan(18, _userId) {
+    function validationUsers (uint _userId) private olderThan(18, _userId) {
+    }
+
+    //EXERCISE 15 - Test it and send confirmation mail
+}
