@@ -1,0 +1,242 @@
+//SPDX-License-Identifier: GPL-3.0
+
+/* Ambient Condition Ship Monitoring System (ACSMS) Smart Contract for Insurance Validation and Bonus
+
+ Description:
+ The following smart contract will serve to facilitate trust between the inusrance company
+ and the ship owner(s)/operator(s). Sensor readings from the ACSMS are stored locally on
+ the vessel with a log kept at regular, time stamped intervals. Data is also uploaded in
+ real time to dweet.io which enables depolyment of Machine to Machine (M2M), IOT technology.
+ Since dweet.io does not store data the smart contract will read the data and create a hash
+ for each parameter based on measurements and the time of the data recording. The creation
+ of a hash ensures trust that parameters are staying within agreed upon bounds, the hash is
+ effecient and allows for data to be later auditied by the insurance company. It also allows the
+ owner(s)/operator(s) to ensure there is no wrongful refusal of an insurance compensation.
+
+ Additionally functionality has been added to automatically pay out insurance dicounts based on
+ an annual percentage rate of the agreed upon insurance premium. This functionaility will
+ incentivize the ship owner(s)/operator(s) to keep the conditions under ideal and absolute ranges so
+ that they can recieve automated, daily payouts on a non-coumpounding APR scheme. To avoid any
+ sensor errors or occasional, extreme fluctuations the sensor values are stored in an array and averaged for
+ 10 minute at a time. These averaged values are then stored in a daily array time array and using logical
+ operators the array is checked to see if there are any values outside of the absolute or ideal
+ condition ranges. The ship owner/operator will not be charged extra if the absolute range is
+ exceeded, however the the ship owner/operator will recieve payment bounuses which are greater if
+ the sensors stay within ideal range, less if the sensors read within absolute rangee, if the sensors
+ a combination of being in the absolute and ideal ranges then the APR will be calculated based on their ratios.
+ Finally no bounus will be paid if the absolute ranges are exceeded.
+
+ Inputs:
+ Sensors,
+ 1 - Temperature [degree C]
+ 2 - Relative humidity [%]
+ 3 - Carbon monoxide [ppm]
+ 4 - Time [Unix epoch/seconds]
+
+
+ Limits,
+ 5 - Temperature, upper absolute limit [degree C]
+ 6 - Temperature, lower absolute limit [degree C]
+ 7 - Temperature, upper ideal limit [degree C]
+ 8 - Temperature, lower ideal limit [degree C]
+ 9 - Relative Humidity, upper absolute limit [%]
+ 10 - Relative Humidity, lower absolute limit [%]
+ 11 - Relative Humidity, upper ideal limit [%]
+ 12 - Relative Humidity, lower ideal limit [%]
+ 
+ Bonus information,
+ 13 - Annual Insurance Premium [$]
+ 14 - APR  Bonus for absolute limit [%]
+ 15 - APR  Bonus for ideal limit [%]
+
+ Outputs:
+ 1 - Temperature + time hash
+ 2 - Relative humidity + time hash
+ 3 - Carbon monoxide + time hash
+ 4 - Insurance bonus payout and balance
+
+ V1
+ Created 18 April 2022
+
+ V2
+ Created 21 April 2022
+ Edit: Added delay calculation functionaility between data and execution stamp
+
+ V3
+ Created 2 June 2022
+ Edit: Added functionality for insurance bonus payout
+ */
+
+pragma solidity >=0.5.0 <0.8.0; //Define which versions of solidity to include
+
+contract ACMS_Val { //Name of contract. i.e Ambient Condition Ship Monitoring System Validation
+
+struct Reading{ //A struct is creaated to link the temperature, humidity, carbon monoxide, and time data which at this stage is assumed to be read elseware
+        uint Time; //Time stamp from ship data, assuming it follows Unix epoch format
+        uint Temp; //Temperature from ship data
+        uint Humi; //Humidity from ship data
+        uint CO; //Carbon monoxide from ship data
+}
+
+Reading[] public MeasuredParameters; //Create public array of previous struct for transparancy 
+
+
+event TimeHash(uint Time, uint HashVal, uint Delay); //Create an event for when a hash and time data step are recieved and the delay between recieving data and execution is recorded
+
+uint Precision = 10**2; //Since it is easier to work in integers but precision is also beneficial parameters are multiplied by the "precision" variable to quasi return the parameter to, two decimal places
+
+// create a private function to convert data parameters to hash, update previously declared event
+function ReadingToHash(uint _Time, uint _Temp, uint _Humi, uint _CO) private {
+    MeasuredParameters.push(Reading(_Time, _Temp*Precision, _Humi*Precision, _CO*Precision)); //organize and update paramters in array, consider if CO needs to be multiplied by precision
+    uint _HashVal = uint(keccak256(abi.encodePacked(_Time, _Temp, _Humi, _CO))); //create a hash value from previous array
+    uint _Delay = block.timestamp-_Time;
+    emit TimeHash(_Time,_HashVal, _Delay); //update previous event with the newly created hash value and coresponding time stamp
+}
+
+// create a public mapping which links the hash value to the address
+mapping (uint => address) public HashToAddress;
+
+// create a function which links the address of the function to the hash
+function TimeToHashFunc(uint _Id) public {
+    HashToAddress[_Id] = msg.sender;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+// moving on to implementing the insurance contract bonus payout
+
+//A struct is created to link the insurance premium, APR return for ideal ranges, APR return for absolute ranges
+struct BonusParameters{ //A struct is created to link the values relating to APR and daily bonus
+        uint InsurancePremium; //The yearly insurance preimum
+		uint APRIdeal; //The yearly, non comounded interest rate for ideal ranges
+	    uint APRAbsolute; //The yearly, non comounded interest rate for absolute ranges
+}
+
+//Calculate the theroetical daily bonus
+uint DailyBonusAbsolute = BonusParameters.InsurancePremium*BonusParameters.APRAbsolute/365/100;
+uint DailyBonusIdeal = BonusParameters.InsurancePremium*BonusParameters.APRIdeal/365/100;
+
+//A struct is created to link the temperature, humidity, carbon monoxide upper and lower limits
+struct Limits{
+        uint TempUpperAbsolute; //Upper and Lower, Ideal and Absolute limits
+	    uint TempLowerAbsolute;
+        uint TempUpperIdeal;
+	    uint TempLowerIdeal;
+        uint HumiUpperAbsolute;
+        uint HumiLowerAbsolute;
+        uint HumiUpperIdeal;
+        uint HumiLowerIdeal;
+        uint COUpperAbsolute;
+	    uint COLowerAbsolute;
+}
+
+//Utilize a while loop to calculate to fill three arrays with 10 minuets worth of sensor data
+uint TimeStepInitial = block.timestep; //grab initial time stamp
+
+uint[] public TempArrayTenMin; //Initialize arrays for storing 10 mins of sensor data
+uint[] public HumiArrayTenMin;
+uint[] public COArrayTenMin;
+
+uint[] public SumTempTenMin = 0; //Initialize variable for adding 10 mins of sensor data
+uint[] public SumHumiTenMin = 0;
+uint[] public SumCOTenMin = 0;
+
+uint[] public TempArrayOneDay; //Initialize arrays for storing 24 hours of sensor data
+uint[] public HumiArrayOneDay;
+uint[] public COArrayOneDay;
+
+function GetDailyParameters() private {
+while (TimeStepInitial > (block.timestep-(24*60*60))){ //Run for a total of 24 hours
+	//Push sensor values to fill 10 minuet array 
+	uint TimeStepTenMin = block.timestep; //Update the time stamp to get a time difference
+	while (TimeStepTenMin > (block.timestep-(10*60))){ //Execute loop for 10 minuets
+		TempArrayTenMin.push(Reading.Temp); //asign sensor values to array 
+		HumiArrayTenMin.push(Reading.Humi);
+		COArrayTenMin.push(Reading.CO);
+	}
+	
+	//Calculate sensor average from 10 minuets of data
+	for (uint i = 0; i <= TempArrayTenMin.length; i++){ //Just use the length of the temperature array.
+    SumTempTenMin = SumTempTenMin + TempArrayTenMin[i]; //add the sensor values
+    SumHumiTenMin = SumHumiTenMin + HumiArrayTenMin[i];
+    SumCOTenMin = SumCOTenMin + COArrayTenMin[i];
+		if (i == TempArrayTenMin.length){ //when at the end of the loop divide by length for average
+			uint AvgTempTenMin = SumTempTenMin/i;
+			uint AvgHumiTenMin = SumHumiTenMin/i;
+			uint AvgCOTenMin = SumCOTenMin/i;
+		}
+	}
+	
+	//Push calculated average to array to store 24 hours of data
+	    TempArrayOneDay.push[AvgTempTenMin]; //asign sensor values to array 
+	    HumiArrayOneDay.push[AvgHumiTenMin];
+	    COArrayOneDay.push[AvgCOTenMin];
+    {
+}
+}
+
+//Next read the array values from the days worth of data and check if values fall within absolute or ideal ranges
+uint AbsoluteCounter = 0; //Initialize counters for determining how much data lies within what ranges
+uint IdealCounter = 0;
+uint FailCounter = 0;
+uint ILength = TempArrayOneDay.length;
+
+for (uint i = 0; i <= ILength; i++){
+	//Count if the parameters fall within absolute ranges
+	if (TempArrayOneDay[i] > Limits.TempLowerAbsolute && TempArrayOneDay[i] < Limits.TempLowerIdeal||TempArrayOneDay[i] < Limits.TempUpperAbsolute && TempArrayOneDay[i] > Limits.TempUpperIdeal){
+	AbsoluteCounter = AbsoluteCounter + 1;
+	}
+	if (HumiArrayOneDay[i] > Limits.HumiLowerAbsolute && HumiArrayOneDay[i] < Limits.HumiLowerIdeal||HumiArrayOneDay[i] < Limits.HumiUpperAbsolute && HumiArrayOneDay[i] > Limits.HumiUpperIdeal){
+	AbsoluteCounter = AbsoluteCounter + 1;
+	}
+	if (COArrayOneDay[i] > Limits.COLowerAbsolute && COArrayOneDay[i] < Limits.COLowerIdeal|COArrayOneDay[i] < Limits.COpperAbsolute && COArrayOneDay[i] > Limits.COUpperIdeal){
+	AbsoluteCounter = AbsoluteCounter + 1;
+	}
+
+	//Count if the parameters fall within ideal ranges
+	if (TempArrayOneDay[i] < Limits.TempUpperIdeal && TempArrayOneDay[i] > Limits.TempLowerIdeal){
+	IdealCounter = IdealCounter + 1;
+	}
+	if (HumiArrayOneDay[i] < Limits.HumiUpperIdeal && HumiArrayOneDay[i] > Limits.HumiLowerIdeal){
+	IdealCounter = IdealCounter + 1;
+	}
+	if (COArrayOneDay[i] < Limits.COUpperIdeal && COArrayOneDay[i] > Limits.COLowerIdeal){
+	IdealCounter = IdealCounter + 1;
+	}
+	
+	//Count if the parameters fall outside ideal ranges
+	if (TempArrayOneDay[i] < Limits.TempLowerAbsolute && TempArrayOneDay[i] > Limits.TempUpperAbsolute){
+	FailCounter = FailCounter + 1;
+	}
+	if (HumiArrayOneDay[i] < Limits.HumiLowerAbsolute && HumiArrayOneDay[i] > Limits.HumiUpperAbsolute){
+	FailCounter = FailCounter + 1;
+	}
+	if (COArrayOneDay[i] < Limits.COLowerAbsolute && COArrayOneDay[i] > Limits.COUpperAbsolute){
+	FailCounter = FailCounter + 1;
+	}
+	
+}
+//Use logical statements to determine bonus amount
+
+uint InsuranceBonusPayout = 0;
+if (AbsoluteCounter > 0 && IdealCounter == 0 && FailCounter == 0){
+	InsuranceBonusPayout = DailyBonusAbsolute;
+}
+if (IdealCounter > 0 && AbsoluteCounter == 0 && FailCounter == 0){
+	InsuranceBonusPayout = DailyBonusIdeal;
+}
+if (IdealCounter > 0 && AbsoluteCounter > 0 && FailCounter == 0){ //A ratio is used to determine the overall payout depedning on the amount of ideal to absolute
+	InsuranceBonusPayout = ((IdealCounter/(IdealCounter+AbsoluteCounter))*APRIdeal + (AbsoluteCounter/(AbsoluteCounter+IdeaCounter))*APRAbsolute)/365/100*InsurancePremium;
+}
+//implictly if there are fails counted the insurance payout will be 0
+
+//Finally create a function which pays out the correct amount daily depending on the value of the absolute, ideal, and fail counter
+
+function Deposit() payable public {
+	require(msg.value == InsuarnaceBonusPayout);
+}
+function GetBalance() public view returns (uint256) {
+	return address(this).balance;
+}
+
+}
